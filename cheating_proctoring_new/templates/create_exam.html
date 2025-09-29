@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Exam</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark app-nav-blur">
+        <div class="container-fluid">
+            <span class="navbar-brand">➕ Create New Exam</span>
+            <a href="/teacher/dashboard" class="btn btn-outline-light">← Back to Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container content">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card app-glass shadow-soft">
+                    <div class="card-header bg-primary text-white">
+                        <h5>Exam Details</h5>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} alert-dismissible fade show">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label class="form-label">Exam Title</label>
+                                <input type="text" name="title" class="form-control" placeholder="e.g., General Knowledge Test" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Duration (Minutes)</label>
+                                <input type="number" name="duration" class="form-control" value="2" min="1" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Total Questions</label>
+                                <input type="number" name="total_questions" class="form-control" value="20" min="1" required>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100 py-2">Create Exam</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark app-nav-blur">
+        <div class="container-fluid">
+            <span class="navbar-brand">Welcome, {{ student_name }}!</span>
+            <a href="/student/logout" class="btn btn-outline-light">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 sidebar">
+                <h5 class="p-3 text-white">Student Panel</h5>
+                <div class="list-unstyled">
+                    <li><a href="#available-exams">📝 Available Exams</a></li>
+                    <li><a href="#my-results">📊 My Results</a></li>
+                    <li><a href="/student/results">📈 View All Results</a></li>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-9 content">
+                <!-- Available Exams -->
+                <div id="available-exams" class="card mb-4 shadow-soft">
+                    <div class="card-header bg-success text-white">
+                        <h5>Available Exams</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if exams %}
+                            {% for exam in exams %}
+                                <div class="card mb-3 shadow-soft">
+                                    <div class="card-body">
+                                        <h6>{{ exam.title }}</h6>
+                                        <p class="mb-2">Duration: {{ exam.duration_minutes }} minutes</p>
+                                        <p class="mb-3">Questions: {{ exam.total_questions }}</p>
+                                        <a href="/student/start_exam/{{ exam.id }}" class="btn btn-primary">Start Exam</a>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted">No exams available at the moment.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Recent Attempts -->
+                <div id="my-results" class="card shadow-soft">
+                    <div class="card-header bg-info text-white">
+                        <h5>My Recent Attempts</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if attempts %}
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Exam</th>
+                                            <th>Status</th>
+                                            <th>Marks</th>
+                                            <th>Violations</th>
+                                            <th>Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for attempt in attempts[-5:] %}
+                                        <tr>
+                                            <td>
+                                                {% for exam in exams %}
+                                                    {% if exam.id == attempt.exam_id %}
+                                                        {{ exam.title }}
+                                                    {% endif %}
+                                                {% else %}
+                                                    Unknown
+                                                {% endfor %}
+                                            </td>
+                                            <td>
+                                                {% if attempt.terminated %}
+                                                    <span class="badge bg-danger">Terminated</span>
+                                                {% elif attempt.submitted %}
+                                                    <span class="badge bg-success">Completed</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">In Progress</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if attempt.submitted %}
+                                                    <strong>{{ attempt.final_marks }}</strong>
+                                                {% else %}
+                                                    -
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-{{ 'danger' if attempt.cheating_count > 0 else 'success' }}">
+                                                    {{ attempt.cheating_count }}
+                                                </span>
+                                            </td>
+                                            <td>{{ attempt.start_time.strftime('%Y-%m-%d') }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <p class="text-muted">No exam attempts yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

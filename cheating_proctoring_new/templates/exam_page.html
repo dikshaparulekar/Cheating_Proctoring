@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Exam - {{ exam.title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark app-nav-blur">
+        <div class="container-fluid">
+            <span class="navbar-brand">{{ exam.title }}</span>
+            <div class="timer" id="timer">{{ "%02d"|format(exam.duration_minutes) }}:00</div>
+        </div>
+    </nav>
+
+    <div class="container content">
+        <!-- Camera Proctoring Section -->
+        <div id="cameraContainer" class="card mb-4 shadow-soft">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">📷 AI Camera Proctoring</h6>
+                <span id="cameraStatus" class="badge bg-success">Active</span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 text-center">
+                        <video id="cameraFeed" autoplay playsinline class="camera-feed" width="100%" height="240"></video>
+                        <div class="mt-2">
+                            <small class="text-muted">Live Camera Feed - Required for exam integrity</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Proctoring Status</h6>
+                        <div class="mb-2">
+                            <small>Face Detection: <span id="faceStatus" class="badge bg-success">Active</span></small>
+                        </div>
+                        <div class="mb-2">
+                            <small>Attention Monitoring: <span id="attentionStatus" class="badge bg-success">Normal</span></small>
+                        </div>
+                        <div class="mb-2">
+                            <small>Environment Check: <span id="environmentStatus" class="badge bg-success">Clear</span></small>
+                        </div>
+                        <div class="mt-3">
+                            <div class="progress mb-2">
+                                <div id="integrityScore" class="progress-bar bg-success" role="progressbar" style="width: 100%">Integrity: 100%</div>
+                            </div>
+                            <small class="text-muted">Warnings: <span id="warningCount">0</span>/3</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cheating Warning -->
+        <div id="cheatingWarning" class="cheating-warning mb-3" style="display: none;">
+            <strong>⚠️ Warning:</strong> <span id="warningText"></span>
+        </div>
+
+        <!-- Camera Warning -->
+        <div id="cameraWarning" class="alert alert-warning mb-3" style="display: none;">
+            <strong>📷 Camera Alert:</strong> <span id="cameraWarningText"></span>
+        </div>
+
+        <!-- Exam Form -->
+        <form id="examForm">
+            <div id="questionsContainer">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading questions...</span>
+                    </div>
+                    <p class="mt-2">Loading questions...</p>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <button type="submit" class="btn btn-success btn-lg py-3 px-5">Submit Exam</button>
+            </div>
+        </form>
+
+        <!-- Results -->
+        <div id="results" style="display: none;"></div>
+    </div>
+
+    <!-- Camera Permission Modal -->
+    <div class="modal fade" id="cameraPermissionModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Camera Access Required</h5>
+                </div>
+                <div class="modal-body">
+                    <p>This exam requires camera proctoring to ensure academic integrity.</p>
+                    <p>Please allow camera access when prompted to continue with the exam.</p>
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> Your camera feed will be analyzed in real-time for:
+                        <ul class="mt-2 mb-0">
+                            <li>Face detection and verification</li>
+                            <li>Attention monitoring</li>
+                            <li>Environment checking</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" id="enableCameraBtn">Enable Camera</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const examId = {{ exam.id }};
+        const attemptId = {{ attempt_id }};
+        const duration = {{ exam.duration_minutes }} * 60;
+        let timeLeft = duration;
+        let cheatingCount = 0;
+        let examTerminated = false;
+
+        // Camera Proctoring Variables
+        let cameraStream = null;
+        let cameraInterval = null;
+        let cameraWarnings = 0;
+        let isCameraActive = false;
+
+        // Initialize Camera Proctoring
+        async function initializeCameraProctoring() {
+            try {
+                const permissionModal = new bootstrap.Modal(document.getElementById('cameraPermissionModal'));
+                permissionModal.show();
+                
+                document.getElementById('enableCameraBtn').addEventListener('click', async function() {
+                    try {
+                        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { 
+                                width: 320, 
+                                height: 240,
+                                facingMode: 'user'
+                            },
+                            audio: false
+                        });
+                        
+                        const video = document.getElementById('cameraFeed');
+                        video.srcObject = cameraStream;
+                        
+                        await fetch('/api/start_camera_proctoring', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        startFrameProcessing();
+                        isCameraActive = true;
+                        
+                        document.getElementById('cameraStatus').textContent = 'Active';
+                        document.getElementById('cameraStatus').className = 'badge bg-success';
+                        
+                        permissionModal.hide();
+                        
+                    } catch (error) {
+                        console.error('Camera access failed:', error);
+                        handleCameraError('Camera access denied. Exam cannot continue without camera.');
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Camera initialization failed:', error);
+                handleCameraError('Camera initialization failed.');
+            }
+        }
+
+        function handleCameraError(message) {
+            document.getElementById('cameraStatus').textContent = 'Failed';
+            document.getElementById('cameraStatus').className = 'badge bg-danger';
+            document.getElementById('faceStatus').textContent = 'Inactive';
+            document.getElementById('faceStatus').className = 'badge bg-danger';
+            
+            showCameraWarning(message, true);
+            
+            setTimeout(() => {
+                document.getElementById('cameraWarning').style.display = 'none';
+            }, 5000);
+        }
+
+        // Process camera frames
+        function startFrameProcessing() {
+            const video = document.getElementById('cameraFeed');
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            canvas.width = 320;
+            canvas.height = 240;
+            
+            cameraInterval = setInterval(async () => {
+                if (video.readyState === video.HAVE_ENOUGH_DATA && !examTerminated) {
+                    try {
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = canvas.toDataURL('image/jpeg', 0.7);
+                        
+                        const response = await fetch('/api/process_camera_frame', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                image_data: imageData,
+                                timestamp: Date.now()
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            
+                            if (result.violation) {
+                                handleCameraViolation(result);
+                            } else {
+                                updateCameraStatus('normal');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Frame processing error:', error);
+                        updateCameraStatus('error');
+                    }
+                }
+            }, 3000);
+        }
+
+        // Update camera status indicators
+        function updateCameraStatus(status) {
+            const faceStatus = document.getElementById('faceStatus');
+            const attentionStatus = document.getElementById('attentionStatus');
+            const environmentStatus = document.getElementById('environmentStatus');
+            const integrityScore = document.getElementById('integrityScore');
+            
+            switch(status) {
+                case 'normal':
+                    faceStatus.textContent = 'Detected';
+                    faceStatus.className = 'badge bg-success';
+                    attentionStatus.textContent = 'Focused';
+                    attentionStatus.className = 'badge bg-success';
+                    environmentStatus.textContent = 'Clear';
+                    environmentStatus.className = 'badge bg-success';
+                    
+                    const score = Math.max(0, 100 - (cameraWarnings * 20));
+                    integrityScore.style.width = `${score}%`;
+                    integrityScore.textContent = `Integrity: ${score}%`;
+                    integrityScore.className = `progress-bar ${score >= 60 ? 'bg-success' : score >= 30 ? 'bg-warning' : 'bg-danger'}`;
+                    break;
+                    
+                case 'no_face':
+                    faceStatus.textContent = 'Not Detected';
+                    faceStatus.className = 'badge bg-danger';
+                    break;
+                    
+                case 'multiple_faces':
+                    faceStatus.textContent = 'Multiple';
+                    faceStatus.className = 'badge bg-danger';
+                    environmentStatus.textContent = 'Suspicious';
+                    environmentStatus.className = 'badge bg-warning';
+                    break;
+                    
+                case 'attention_issue':
+                    attentionStatus.textContent = 'Distracted';
+                    attentionStatus.className = 'badge bg-warning';
+                    break;
+                    
+                case 'error':
+                    faceStatus.textContent = 'Error';
+                    faceStatus.className = 'badge bg-danger';
+                    break;
+            }
+        }
+
+        // Handle camera violations
+        function handleCameraViolation(result) {
+            cameraWarnings++;
+            document.getElementById('warningCount').textContent = cameraWarnings;
+            
+            const warningDiv = document.getElementById('cameraWarning');
+            const warningText = document.getElementById('cameraWarningText');
+            
+            warningText.textContent = `${result.message} (Warning ${cameraWarnings}/3)`;
+            warningDiv.style.display = 'block';
+            
+            updateCameraStatus(result.violation_type);
+            
+            if (cameraWarnings >= 2) {
+                warningDiv.className = 'alert alert-danger mb-3';
+            } else {
+                warningDiv.className = 'alert alert-warning mb-3';
+            }
+            
+            setTimeout(() => {
+                warningDiv.style.display = 'none';
+            }, 5000);
+            
+            if (cameraWarnings >= 3) {
+                terminateExamDueToCameraViolations();
+            }
+        }
+
+        function terminateExamDueToCameraViolations() {
+            examTerminated = true;
+            showCameraWarning('Exam terminated due to multiple camera violations! Submitting automatically...', true);
+            stopCameraProctoring();
+            setTimeout(() => submitExam(), 3000);
+        }
+
+        function showCameraWarning(message, isTerminated = false) {
+            const warningDiv = document.getElementById('cameraWarning');
+            const warningText = document.getElementById('cameraWarningText');
+            
+            warningText.textContent = message;
+            warningDiv.style.display = 'block';
+            
+            if (isTerminated) {
+                warningDiv.className = 'alert alert-danger mb-3';
+            }
+        }
+
+        // Stop camera when exam ends
+        function stopCameraProctoring() {
+            if (cameraInterval) {
+                clearInterval(cameraInterval);
+                cameraInterval = null;
+            }
+            
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            isCameraActive = false;
+            document.getElementById('cameraStatus').textContent = 'Inactive';
+            document.getElementById('cameraStatus').className = 'badge bg-secondary';
+        }
+
+        // Enhanced cheating detection
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && !examTerminated) {
+                console.log('Tab switched detected!');
+                recordCheating('tab_switch');
+            }
+        });
+
+        window.addEventListener('blur', function() {
+            if (!examTerminated) {
+                console.log('Window lost focus!');
+                recordCheating('window_switch');
+            }
+        });
+
+        // Prevent right-click
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            if (!examTerminated) {
+                recordCheating('right_click');
+            }
+            return false;
+        });
+
+        // Record cheating
+        async function recordCheating(type) {
+            try {
+                const response = await fetch('/api/record_cheating', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: type })
+                });
+
+                const result = await response.json();
+                
+                if (result.terminated) {
+                    examTerminated = true;
+                    showWarning('Exam terminated due to multiple cheating attempts!', true);
+                    stopCameraProctoring();
+                    setTimeout(() => submitExam(), 2000);
+                } else {
+                    cheatingCount = result.cheating_count;
+                    if (result.warning) {
+                        showWarning('First cheating detected! 50% penalty will be applied. Next violation will terminate exam.');
+                    } else {
+                        showWarning(`Cheating detected! Count: ${cheatingCount}`);
+                    }
+                }
+            } catch (error) {
+                console.error('Error recording cheating:', error);
+            }
+        }
+
+        function showWarning(message, isTerminated = false) {
+            const warningDiv = document.getElementById('cheatingWarning');
+            const warningText = document.getElementById('warningText');
+            
+            warningText.textContent = message;
+            warningDiv.style.display = 'block';
+            
+            if (isTerminated) {
+                warningDiv.style.background = '#f8d7da';
+                warningDiv.style.borderLeftColor = '#dc3545';
+            }
+        }
+
+        // Timer
+        function updateTimer() {
+            if (timeLeft <= 0 || examTerminated) {
+                submitExam();
+                return;
+            }
+
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('timer').textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            timeLeft--;
+        }
+
+        // Load questions
+        async function loadQuestions() {
+            try {
+                const response = await fetch(`/api/exam/questions/${examId}`);
+                const data = await response.json();
+                
+                const container = document.getElementById('questionsContainer');
+                container.innerHTML = '';
+                
+                data.questions.forEach((q, index) => {
+                    const questionHtml = `
+                        <div class="question-card">
+                            <h6>Q${index + 1}: ${q.text}</h6>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="q${q.id}" id="q${q.id}_a" value="A">
+                                <label class="form-check-label" for="q${q.id}_a">A: ${q.options.A}</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="q${q.id}" id="q${q.id}_b" value="B">
+                                <label class="form-check-label" for="q${q.id}_b">B: ${q.options.B}</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="q${q.id}" id="q${q.id}_c" value="C">
+                                <label class="form-check-label" for="q${q.id}_c">C: ${q.options.C}</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="q${q.id}" id="q${q.id}_d" value="D">
+                                <label class="form-check-label" for="q${q.id}_d">D: ${q.options.D}</label>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += questionHtml;
+                });
+            } catch (error) {
+                console.error('Error loading questions:', error);
+                document.getElementById('questionsContainer').innerHTML = 
+                    '<div class="alert alert-danger">Error loading questions. Please refresh the page.</div>';
+            }
+        }
+
+        // Submit exam
+        async function submitExam() {
+            if (examTerminated) return;
+
+            stopCameraProctoring();
+
+            const form = document.getElementById('examForm');
+            const answers = [];
+
+            document.querySelectorAll('input[type="radio"]:checked').forEach(input => {
+                const questionId = input.name.replace('q', '');
+                answers.push({
+                    question_id: parseInt(questionId),
+                    selected_option: input.value
+                });
+            });
+
+            try {
+                const response = await fetch('/api/submit_exam', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        answers: answers,
+                        camera_warnings: cameraWarnings
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResults(result);
+                }
+            } catch (error) {
+                console.error('Error submitting exam:', error);
+                alert('Error submitting exam. Please try again.');
+            }
+        }
+
+        function showResults(result) {
+            document.getElementById('examForm').style.display = 'none';
+            document.getElementById('cameraContainer').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            
+            let resultHtml = `<div class="card app-glass shadow-soft">
+                <div class="card-body text-center py-5">
+                    <h4 class="text-success mb-4">✅ Exam Submitted Successfully!</h4>
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <div class="alert alert-info">
+                                <h5>Marks: ${result.marks}/20</h5>
+                                <p>Tab Switching Violations: ${result.cheating_count}</p>
+                                <p>Camera Warnings: ${result.camera_warnings || 0}</p>
+                                ${result.terminated ? '<p class="text-danger"><strong>Exam was terminated due to violations</strong></p>' : ''}
+                            </div>
+                            <a href="/student/dashboard" class="btn btn-primary btn-lg mt-3">Back to Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            
+            document.getElementById('results').innerHTML = resultHtml;
+        }
+
+        // Initialize
+        document.getElementById('examForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (confirm('Are you sure you want to submit the exam?')) {
+                submitExam();
+            }
+        });
+
+        // Start exam and camera
+        document.addEventListener('DOMContentLoaded', function() {
+            loadQuestions();
+            initializeCameraProctoring();
+            setInterval(updateTimer, 1000);
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

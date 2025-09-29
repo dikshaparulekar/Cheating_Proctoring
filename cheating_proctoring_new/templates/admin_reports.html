@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reports - Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark app-nav-blur">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">📈 Reports & Analytics - {{ admin_name }}</span>
+            <a href="/admin/dashboard" class="btn btn-outline-light">← Back to Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-2 sidebar">
+                <div class="p-3 text-center">
+                    <h5 class="text-white">Admin Panel</h5>
+                </div>
+                <div class="list-unstyled">
+                    <li><a href="/admin/dashboard">📊 System Overview</a></li>
+                    <li><a href="/admin/users">👥 User Management</a></li>
+                    <li><a href="/admin/exams">📝 Exam Management</a></li>
+                    <li><a href="/admin/reports" class="active">📈 Reports & Analytics</a></li>
+                    <li><a href="/admin/settings">⚙️ System Settings</a></li>
+                </div>
+            </div>
+
+            <div class="col-md-10 content">
+                <div class="card shadow-soft">
+                    <div class="card-header bg-warning text-white">
+                        <h5 class="mb-0">Exam Performance Reports</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if exam_results %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Exam</th>
+                                        <th>Total Attempts</th>
+                                        <th>Average Score</th>
+                                        <th>Pass Rate</th>
+                                        <th>Cheating Incidents</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for result in exam_results %}
+                                    <tr>
+                                        <td><strong>{{ result.exam.title }}</strong></td>
+                                        <td>{{ result.total_attempts }}</td>
+                                        <td>{{ "%.1f"|format(result.avg_score) }}/{{ result.exam.total_questions }}</td>
+                                        <td>{{ "%.1f"|format(result.pass_rate) }}%</td>
+                                        <td>
+                                            <span class="badge bg-{% if result.cheating_count > 0 %}danger{% else %}success{% endif %}">
+                                                {{ result.cheating_count }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No exam data available for reports.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
